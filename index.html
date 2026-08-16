@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>BabyDoom RPG — Beta</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#07140d;font-family:system-ui,-apple-system,sans-serif}
+#game{position:fixed;inset:0;width:100%;height:100%;display:block;background:#173b27}
+.hud{position:fixed;top:14px;left:14px;right:14px;display:flex;justify-content:space-between;gap:10px;pointer-events:none}
+.panel{background:rgba(7,16,18,.9);border:1px solid #718087;border-radius:16px;padding:10px 13px;color:#fff;box-shadow:0 5px 20px #0006}
+.title{font-weight:800;font-size:17px}.small{font-size:13px;margin-top:3px}
+.bar{width:220px;height:10px;background:#263238;border-radius:10px;overflow:hidden;margin-top:4px}.fill{height:100%}
+.hp{background:#ef5350}.mp{background:#4385e8}.xp{background:#e7c83d}
+#mission{min-width:145px}
+.controls{position:fixed;left:20px;bottom:22px;right:20px;display:flex;justify-content:space-between;align-items:end}
+.joy{width:120px;height:120px;border-radius:50%;background:#0b1712cc;border:3px solid #65716b;position:relative;touch-action:none}
+.knob{position:absolute;width:58px;height:58px;border-radius:50%;left:29px;top:29px;background:#b8c0bd}
+.actions{display:flex;gap:10px}
+.btn{width:68px;height:68px;border-radius:50%;border:2px solid #91a0ff;background:#263f9d;color:#fff;font-size:28px;box-shadow:0 4px 12px #0006;touch-action:manipulation}
+.btn.attack{background:#a63d35;border-color:#e48c85}
+#toast{position:fixed;left:50%;bottom:155px;transform:translateX(-50%);background:#101a1dcc;color:#fff;padding:10px 16px;border-radius:12px;opacity:0;transition:.2s;pointer-events:none}
+#menu{position:fixed;right:18px;top:95px;background:#0b1517ee;border:1px solid #657176;border-radius:14px;padding:8px;display:none;color:#fff}
+#menu button{display:block;width:180px;margin:4px;padding:10px;border:0;border-radius:9px;background:#26333a;color:#fff;text-align:left}
+@media(max-width:600px){.bar{width:180px}.panel{padding:8px 10px}.title{font-size:15px}.small{font-size:12px}#mission{min-width:135px}}
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div class="hud">
+  <div class="panel">
+    <div class="title">👶 BabyDoom · Guerrero · Nv. <span id="lvl">1</span></div>
+    <div class="small">❤️ Vida</div><div class="bar"><div id="hp" class="fill hp" style="width:100%"></div></div>
+    <div class="small">🔵 Maná</div><div class="bar"><div id="mp" class="fill mp" style="width:100%"></div></div>
+    <div class="small">⭐ EXP</div><div class="bar"><div id="xp" class="fill xp" style="width:8%"></div></div>
+  </div>
+  <div class="panel" id="mission">📜 <b>MISIÓN</b><br><span id="missionText">Derrota lobos 0/8<br>🎁 300 oro</span><br><span>🌲 Mundo 1</span></div>
+</div>
+
+<div id="menu">
+  <button onclick="toast('🎒 Inventario: 20 espacios')">🎒 Inventario</button>
+  <button onclick="toast('📦 Baúl: 20 espacios')">📦 Baúl</button>
+  <button onclick="toast('🐾 Mascota: básica')">🐾 Mascota</button>
+</div>
+
+<div id="toast"></div>
+
+<div class="controls">
+  <div class="joy" id="joy"><div class="knob" id="knob"></div></div>
+  <div class="actions">
+    <button class="btn" id="fire">🔥</button>
+    <button class="btn" id="ice">❄️</button>
+    <button class="btn" id="magic">✨</button>
+    <button class="btn attack" id="menuBtn">☰</button>
+  </div>
+</div>
+
+<script>
+const c=document.getElementById('game'),ctx=c.getContext('2d');
+let W,H,dpr,px=0,py=0,worldW=2200,worldH=1500,camX=0,camY=0;
+let keys={},joyX=0,joyY=0, monsters=[],gold=250,level=1,xp=8,kills=0;
+const player={x:700,y:700,r:24,speed:240};
+function resize(){dpr=Math.min(devicePixelRatio||1,2);W=innerWidth;H=innerHeight;c.width=W*dpr;c.height=H*dpr;c.style.width=W+'px';c.style.height=H+'px';ctx.setTransform(dpr,0,0,dpr,0,0)}
+addEventListener('resize',resize);resize();
+
+for(let i=0;i<18;i++) monsters.push({x:180+Math.random()*1800,y:250+Math.random()*1100,r:24,alive:true,wig:Math.random()*6});
+const trees=[]; for(let i=0;i<110;i++) trees.push({x:Math.random()*worldW,y:Math.random()*worldH,s:16+Math.random()*16});
+
+function toast(t){let e=document.getElementById('toast');e.textContent=t;e.style.opacity=1;clearTimeout(window.tt);window.tt=setTimeout(()=>e.style.opacity=0,1600)}
+function drawTree(x,y,s){ctx.fillStyle='#70462f';ctx.fillRect(x-4,y,s/2,s*1.5);ctx.fillStyle='#2e713b';ctx.beginPath();ctx.arc(x,y,s,0,7);ctx.fill();ctx.fillStyle='#3e8a45';ctx.beginPath();ctx.arc(x-s*.35,y+4,s*.7,0,7);ctx.fill()}
+function draw(){
+ ctx.clearRect(0,0,W,H);
+ camX=Math.max(0,Math.min(worldW-W,player.x-W/2));camY=Math.max(0,Math.min(worldH-H,player.y-H/2));
+ ctx.save();ctx.translate(-camX,-camY);
+ ctx.fillStyle='#285d36';ctx.fillRect(0,0,worldW,worldH);
+ ctx.strokeStyle='#397249';ctx.lineWidth=2;
+ for(let x=0;x<worldW;x+=80){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,worldH);ctx.stroke()}
+ for(let y=0;y<worldH;y+=80){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(worldW,y);ctx.stroke()}
+ // path
+ ctx.strokeStyle='#bda575';ctx.lineWidth=90;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(-100,1180);ctx.quadraticCurveTo(850,950,2300,1050);ctx.stroke();
+ ctx.strokeStyle='#d5bf91';ctx.lineWidth=70;ctx.beginPath();ctx.moveTo(-100,1180);ctx.quadraticCurveTo(850,950,2300,1050);ctx.stroke();
+ trees.forEach(t=>drawTree(t.x,t.y,t.s));
+ // town sign
+ ctx.fillStyle='#bbaa7e';ctx.fillRect(560,560,290,130);ctx.fillStyle='#765033';ctx.fillRect(585,510,35,80);ctx.fillRect(790,510,35,80);
+ ctx.fillStyle='#ffe58a';ctx.font='bold 28px system-ui';ctx.textAlign='center';ctx.fillText('🌲 ALDEA ELFIR',705,500);
+ monsters.forEach((m,i)=>{if(!m.alive)return;ctx.fillStyle='#777';ctx.beginPath();ctx.arc(m.x,m.y,m.r,0,7);ctx.fill();ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(m.x-7,m.y-5,4,0,7);ctx.arc(m.x+7,m.y-5,4,0,7);ctx.fill();ctx.fillStyle='#222';ctx.font='12px system-ui';ctx.fillText('Lobo',m.x,m.y-32)});
+ // player + pet
+ ctx.fillStyle='#d8e0e2';ctx.beginPath();ctx.ellipse(player.x-32,player.y+18,27,18,0,0,7);ctx.fill();ctx.fillStyle='#222';ctx.beginPath();ctx.arc(player.x-22,player.y+12,3,0,7);ctx.fill();
+ ctx.fillStyle='#203b45';ctx.fillRect(player.x-18,player.y-5,36,42);ctx.fillStyle='#e9a26f';ctx.beginPath();ctx.arc(player.x,player.y-20,22,0,7);ctx.fill();ctx.fillStyle='#4b2c20';ctx.beginPath();ctx.arc(player.x,player.y-33,20,Math.PI,7);ctx.fill();
+ ctx.strokeStyle='#f5f7ff';ctx.lineWidth=8;ctx.beginPath();ctx.moveTo(player.x+12,player.y);ctx.lineTo(player.x+55,player.y-32);ctx.stroke();
+ ctx.restore();
+}
+function update(dt){
+ let ax=0,ay=0;if(keys.ArrowLeft||keys.a)ax--;if(keys.ArrowRight||keys.d)ax++;if(keys.ArrowUp||keys.w)ay--;if(keys.ArrowDown||keys.s)ay++;
+ ax+=joyX;ay+=joyY;let len=Math.hypot(ax,ay);if(len>1){ax/=len;ay/=len}
+ player.x=Math.max(40,Math.min(worldW-40,player.x+ax*player.speed*dt));player.y=Math.max(40,Math.min(worldH-40,player.y+ay*player.speed*dt));
+ monsters.forEach(m=>{if(!m.alive)return;let dx=player.x-m.x,dy=player.y-m.y,d=Math.hypot(dx,dy);if(d<260){m.x+=dx/d*18*dt;m.y+=dy/d*18*dt}});
+ draw();requestAnimationFrame(tick)
+}
+let last=performance.now();function tick(t){let dt=Math.min(.05,(t-last)/1000);last=t;update(dt)}requestAnimationFrame(tick);
+
+addEventListener('keydown',e=>keys[e.key]=true);addEventListener('keyup',e=>keys[e.key]=false);
+function attack(type){let target=monsters.find(m=>m.alive&&Math.hypot(m.x-player.x,m.y-player.y)<130);if(target){target.alive=false;kills++;gold+=35;xp+=18;if(xp>=100){xp-=100;level++;toast('⭐ ¡Subiste al nivel '+level+'!')}document.getElementById('missionText').innerHTML='Derrota lobos '+Math.min(kills,8)+'/8<br>🎁 300 oro';}else toast(type==='fire'?'🔥 ¡Fuego!':type==='ice'?'❄️ ¡Hielo!':'✨ ¡Magia!')}
+fire.onclick=()=>attack('fire');ice.onclick=()=>attack('ice');magic.onclick=()=>attack('magic');
+menuBtn.onclick=()=>{let m=document.getElementById('menu');m.style.display=m.style.display==='block'?'none':'block'};
+
+const joy=document.getElementById('joy'),knob=document.getElementById('knob');let active=false;
+function setJoy(e){let r=joy.getBoundingClientRect(),x=e.clientX-r.left-r.width/2,y=e.clientY-r.top-r.height/2,max=42,len=Math.hypot(x,y);if(len>max){x=x/len*max;y=y/len*max}knob.style.transform=`translate(${x}px,${y}px)`;joyX=x/max;joyY=y/max}
+joy.addEventListener('pointerdown',e=>{active=true;joy.setPointerCapture(e.pointerId);setJoy(e)});
+joy.addEventListener('pointermove',e=>{if(active)setJoy(e)});
+joy.addEventListener('pointerup',()=>{active=false;joyX=joyY=0;knob.style.transform='translate(0,0)'});
+</script>
+</body>
+</html>
